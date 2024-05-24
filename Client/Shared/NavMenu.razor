@@ -1,0 +1,217 @@
+﻿@using CatalogoProductos.Client.Services
+@using CatalogoProductos.Shared.OutDTO
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider autenticacionProvider
+@inject Api api
+@inject NavigationManager NavigationManager
+
+<div style="max-height: 100vh; overflow-y: auto;">
+    <div class="top-row ps-3 navbar navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="">Catalogo Productos</a>
+            <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="@NavMenuCssClass">
+        <nav class="flex-column">
+            <AuthorizeView>
+                <div class="nav-item px-3 m-3 mb-3 info-usuario" style="color:whitesmoke;">
+                    <img src="https://phantom-telva.unidadeditorial.es/419116a17bb1fe90c283f3aa6e6a0336/crop/0x137/1998x1258/resize/1280/f/webp/assets/multimedia/imagenes/2020/11/11/16050829163655.jpg" alt="Tienda de Ropa" style="width: 100%; height: auto;">
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" Match="NavLinkMatch.All" @onclick="() => ToggleCategorias(true)">
+                        <span class="oi oi-box" aria-hidden="true"></span> Categorías
+                    </NavLink>
+                    <div class="mt-0 lista-categorias texto-blanco" style="display: @(showCategorias ? "block" : "none");">
+                        @if (categorias != null && categorias.Count > 0)
+                        {
+                            @foreach (var categoria in categorias)
+                            {
+                                <div class="nav-item px-3">
+                                    <strong @onclick="() => SeleccionarCategoria(categoria.CategoriaId)" class="texto-blanco @GetCategoriaCssClass(categoria.CategoriaId)">
+                                        @categoria.Nombre
+                                        @if (categoria.CategoriaId == categoriaSeleccionadaId)
+                                        {
+                                            <span class="oi oi-check ms-2"></span>
+                                        }
+                                    </strong>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="nav-item px-3">
+                                <span>No hay categorías disponibles</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="ConfiguCategorias" Match="NavLinkMatch.All">
+                        <span class="oi oi-box" aria-hidden="true"></span> Edición de Categorias
+                    </NavLink>
+                </div>
+            </AuthorizeView>
+
+            <AuthorizeView Roles="Administrador">
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="ConfiguProductos" Match="NavLinkMatch.All">
+                        <span class="oi oi-box" aria-hidden="true"></span> Edición Productos
+                    </NavLink>
+                </div>
+            </AuthorizeView>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link pointer-button" @onclick="CerrarSesion" Match="NavLinkMatch.All">
+                    <span class="oi oi-account-logout" aria-hidden="true"></span> Cerrar Sesión
+                </NavLink>
+            </div>
+        </nav>
+    </div>
+</div>
+
+<style>
+    /* Contenedor del scrollbar */
+    ::-webkit-scrollbar {
+        width: 7px; /* Ancho del scrollbar */
+    }
+
+    /* Track del scrollbar */
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1; /* Color de fondo del track */
+    }
+
+    /* Thumb (agarre) del scrollbar */
+    ::-webkit-scrollbar-thumb {
+        background: #198754; /* Color del thumb */
+        /* Borde redondeado del thumb */
+    }
+
+        /* Cambia el color del thumb cuando se está desplazando */
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555; /* Color del thumb al pasar el cursor */
+        }
+
+    .categoria-seleccionada {
+        background-color: #198754;
+        border-radius: 5px;
+        padding: 5px;
+    }
+
+        .categoria-seleccionada .oi-check {
+            color: white;
+            margin-left: 10px;
+        }
+
+    .texto-blanco {
+        color: white !important;
+    }
+
+    .lista-categorias {
+        margin-left: 20px; /* Ajusta este valor según sea necesario */
+    }
+</style>
+
+@code {
+    private bool collapseNavMenu = true;
+    private bool showCategorias = false;
+    private List<CategoriaOut> categorias = new List<CategoriaOut>();
+
+    UsuarioOut usuario = new UsuarioOut();
+    private int categoriaSeleccionadaId;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await ActualizarCategorias();
+            var autenticacionExt = (Autenticacion)autenticacionProvider;
+            usuario = await autenticacionExt.ObtenerSesionUsuario();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al inicializar: {ex.Message}");
+        }
+    }
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    private async Task ToggleCategorias(bool actualizar = false)
+    {
+        showCategorias = !showCategorias;
+
+        if (actualizar)
+        {
+            await ActualizarCategorias();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ActualizarCategorias()
+    {
+        try
+        {
+            categorias = await ObtenerCategorias();
+            Console.WriteLine("Categorías obtenidas con éxito");
+            if (categorias != null && categorias.Count > 0)
+            {
+                SeleccionarCategoria(categorias[0].CategoriaId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al actualizar las categorías: {ex.Message}");
+        }
+    }
+
+    private async Task<List<CategoriaOut>> ObtenerCategorias()
+    {
+        try
+        {
+            var respuesta = await api.GetApiAuth<List<CategoriaOut>>("/api/Categoria/Listar/Categorias")!;
+            if (respuesta != null && respuesta.Exito)
+            {
+                return respuesta.Resultado!;
+            }
+            else
+            {
+                Console.WriteLine("No se recibieron categorías o la respuesta fue negativa.");
+                return new List<CategoriaOut>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al obtener las categorías del API: {ex.Message}");
+            return new List<CategoriaOut>();
+        }
+    }
+
+    private async Task CerrarSesion()
+    {
+        var autenticacionExt = (Autenticacion)autenticacionProvider;
+        await autenticacionExt.ActualizarEstadoAutenticion(null);
+    }
+
+    private void SeleccionarCategoria(int categoriaId)
+    {
+        categoriaSeleccionadaId = categoriaId;
+        NavigationManager.NavigateTo($"/store/{categoriaId}");
+    }
+
+    private string GetCategoriaCssClass(int categoriaId)
+    {
+        return categoriaId == categoriaSeleccionadaId ? "categoria-seleccionada" : string.Empty;
+    }
+}

@@ -1,0 +1,208 @@
+﻿@using CatalogoProductos.Client.Services
+@using CatalogoProductos.Client.Shared.Buttons
+@using CatalogoProductos.Client.Shared.Cards
+@using CatalogoProductos.Client.Shared.Table
+@using CatalogoProductos.Shared.GeneralDTO
+@using CatalogoProductos.Shared.OutDTO
+@using Microsoft.AspNetCore.Authorization
+
+@page "/ConfiguCategorias"
+@attribute [Authorize(Roles = "Administrador")]
+
+<PageTitle>Configurar Categorías</PageTitle>
+
+<h2>Configurar Categorías</h2>
+
+<Loading @ref="_loading" />
+<Modal @ref="_modal" />
+
+<!-- Tabla de Categorías -->
+<div class="container">
+    <Button Color="success" @onclick="AgregarCategoria" class="mb-3">Agregar Categoría</Button>
+    <table class="table table-striped table-bordered table-hover custom-table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Editar</th>
+                <th>Eliminar</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var categoria in categorias)
+            {
+                <tr>
+                    <td>
+                        @if (categoria.EnEdicion)
+                        {
+                            <input type="text" @bind="categoria.Nombre" class="form-control" />
+                        }
+                        else
+                        {
+                            @categoria.Nombre
+                        }
+                    </td>
+                    <td>
+                        @if (categoria.EnEdicion)
+                        {
+                            <Button Color="primary" @onclick="() => GuardarCategoria(categoria)" class="me-2">Guardar</Button>
+                        }
+                        else
+                        {
+                            <Button Color="warning" @onclick="() => EditarCategoria(categoria)" class="me-2">Editar</Button>
+                        }
+                    </td>
+                    <td>
+                        <Button Color="danger" @onclick="() => EliminarCategoria(categoria.CategoriaId)">Eliminar</Button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<Footer/>
+
+<style>
+    .custom-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .custom-table th, .custom-table td {
+        text-align: left;
+        padding: 12px;
+    }
+
+    .custom-table th {
+        background-color: #198754; /* Color del NavMenu */
+        color: white;
+    }
+
+    .custom-table tr:nth-child(even) {
+        background-color: #f2f2f2;
+    }
+
+    .custom-table tr:hover {
+        background-color: #ddd;
+    }
+
+    .mb-3 {
+        margin-bottom: 1rem;
+    }
+
+    .me-2 {
+        margin-right: 0.5rem;
+    }
+</style>
+
+@code {
+    [Inject] private Api ApiService { get; set; } = default!;
+
+    Modal? _modal;
+    Loading? _loading;
+
+    private List<CategoriaExtendida> categorias = new List<CategoriaExtendida>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarCategorias();
+    }
+
+    private async Task CargarCategorias()
+    {
+        _loading?.Open();
+        var respuesta = await ApiService.GetApiAuth<List<CategoriaOut>>("/api/Categoria/Listar/Categorias")!;
+        if (respuesta != null && respuesta.Exito)
+        {
+            categorias = respuesta.Resultado!.Select(c => new CategoriaExtendida(c)).ToList();
+        }
+        else
+        {
+            _modal?.OpenModalError("Error", "No se pudieron cargar las categorías.");
+        }
+        _loading?.Close();
+    }
+
+    private void AgregarCategoria()
+    {
+        var nuevaCategoria = new CategoriaExtendida { Nombre = "Nueva Categoría", EnEdicion = true };
+        categorias.Add(nuevaCategoria);
+    }
+
+    private void EditarCategoria(CategoriaExtendida categoria)
+    {
+        categoria.EnEdicion = true;
+    }
+
+    private async Task GuardarCategoria(CategoriaExtendida categoria)
+    {
+        _loading?.Open();
+        if (categoria.CategoriaId == 0)
+        {
+            // Crear una nueva categoría
+            var respuesta = await ApiService.PostApiAuth<RespuestaDto>($"/api/Categoria/CrearCategoria/{categoria.Nombre}", new { })!;
+            if (respuesta != null && respuesta.Exito)
+            {
+                _modal?.OpenModalSuccess("Éxito", "Categoría creada exitosamente.");
+                await CargarCategorias();
+            }
+            else
+            {
+                _modal?.OpenModalError("Error", "No se pudo crear la categoría.");
+            }
+        }
+        else
+        {
+            // Editar una categoría existente
+            var respuesta = await ApiService.GetApiAuth<RespuestaDto>($"/api/Categoria/EditarCategoria/{categoria.CategoriaId}/{categoria.Nombre}")!;
+            if (respuesta != null && respuesta.Exito)
+            {
+                _modal?.OpenModalSuccess("Éxito", "Categoría editada exitosamente.");
+                await CargarCategorias();
+            }
+            else
+            {
+                _modal?.OpenModalError("Error", "No se pudo editar la categoría.");
+            }
+        }
+        _loading?.Close();
+    }
+
+    private async Task EliminarCategoria(int categoriaId)
+    {
+        _loading?.Open();
+        var respuesta = await ApiService.PostApiAuth<RespuestaDto>($"/api/Categoria/EliminarCategoria/{categoriaId}", new { })!;
+        if (respuesta != null && respuesta.Exito)
+        {
+            _modal?.OpenModalSuccess("Éxito", "Categoría eliminada exitosamente.");
+            await CargarCategorias();
+        }
+        else
+        {
+            _modal?.OpenModalError("Error", respuesta.Mensaje);
+        }
+        _loading?.Close();
+    }
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            ApiService.Modal = _modal!;
+            ApiService.Loading = _loading!;
+        }
+    }
+
+    private class CategoriaExtendida : CategoriaOut
+    {
+        public bool EnEdicion { get; set; } = false;
+
+        public CategoriaExtendida() { }
+
+        public CategoriaExtendida(CategoriaOut categoria)
+        {
+            this.CategoriaId = categoria.CategoriaId;
+            this.Nombre = categoria.Nombre;
+        }
+    }
+}

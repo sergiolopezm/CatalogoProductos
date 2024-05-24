@@ -1,0 +1,189 @@
+﻿@using CatalogoProductos.Client.Services
+@using CatalogoProductos.Client.Shared.Buttons
+@using CatalogoProductos.Client.Shared.Cards
+@using CatalogoProductos.Client.Shared.Table
+@using CatalogoProductos.Shared.OutDTO
+@using CatalogoProductos.Shared.GeneralDTO
+@using Microsoft.AspNetCore.Authorization
+@inject Api api
+
+@page "/Store"
+@page "/Store/{CategoriaId:int}"
+@attribute [Authorize(Roles = "Administrador,Usuario")]
+
+<PageTitle>Catálogo de Productos</PageTitle>
+
+@if (!mostrarDetalles)
+{
+    <h2>Catálogo de Productos</h2>
+}
+<Loading @ref="_loading" />
+<Modal @ref="_modal" />
+
+<!--BODY-->
+<div class="container">
+    @if (!mostrarDetalles)
+    {
+        <div class="row">
+            @if (productos != null && productos.Count > 0)
+            {
+                @foreach (var producto in productos)
+                {
+                    <div class="col-md-4">
+                        <Card>
+                            <CardImage Source="data:image/png;base64,@producto.Imagen" Alt="@producto.Nombre" />
+                            <CardBody>
+                                <CardTitle>@producto.Nombre</CardTitle>
+                                <CardText>Precio: @producto.Precio</CardText>
+                                <CardText>Cantidad: @producto.Cantidad</CardText>
+                                <Button Color="primary" @onclick="() => VerDetallesProducto(producto)">Ver detalles</Button>
+                            </CardBody>
+                        </Card>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="col-12">
+                    <p>No hay productos disponibles.</p>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <h2>Detalles del Producto</h2>
+                <div class="detalles-producto">
+                    <img src="data:image/png;base64,@productoSeleccionado.Imagen" alt="@productoSeleccionado.Nombre" class="img-detalles" />
+                    <div class="detalles-info">
+                        <h3>@productoSeleccionado.Nombre</h3>
+                        <p><strong>Precio:</strong> @productoSeleccionado.Precio</p>
+                        <p><strong>Cantidad:</strong> @productoSeleccionado.Cantidad</p>
+                        <p><strong>Categoría:</strong> @categoriaSeleccionadaNombre</p>
+                        <Button Color="secondary" @onclick="CerrarDetalles">Cerrar</Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .detalles-producto {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .img-detalles {
+        max-width: 100%;
+        height: auto;
+        margin-bottom: 20px;
+    }
+
+    .detalles-info {
+        text-align: left;
+    }
+</style>
+
+<Footer/>
+
+@code {
+    [Parameter]
+    public int? CategoriaId { get; set; }
+
+    Modal? _modal;
+    Loading? _loading;
+
+    private List<ProductoDto>? productos;
+    private ProductoDto? productoSeleccionado;
+    private bool mostrarDetalles = false;
+    private string? categoriaSeleccionadaNombre;
+
+    private List<CategoriaOut> categorias = new List<CategoriaOut>();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        categorias = await ObtenerCategorias();
+
+        if (CategoriaId.HasValue)
+        {
+            productos = await ObtenerProductosPorCategoria(CategoriaId.Value);
+            categoriaSeleccionadaNombre = categorias.FirstOrDefault(c => c.CategoriaId == CategoriaId)?.Nombre;
+        }
+        else
+        {
+            productos = await ObtenerTodosLosProductos();
+        }
+
+        // Cerrando detalles al cambiar de categoría
+        CerrarDetalles();
+    }
+
+    private async Task<List<ProductoDto>> ObtenerProductosPorCategoria(int id_categoria)
+    {
+        var respuesta = await api.GetApiAuth<List<ProductoDto>>($"/api/Producto/ListarProductos/{id_categoria}")!;
+        if (respuesta != null && respuesta.Exito)
+        {
+            return respuesta.Resultado!;
+        }
+        else
+        {
+            Console.WriteLine("No se recibieron productos o la respuesta fue negativa.");
+            return new List<ProductoDto>();
+        }
+    }
+
+    private async Task<List<ProductoDto>> ObtenerTodosLosProductos()
+    {
+        var respuesta = await api.GetApiAuth<List<ProductoDto>>("/api/Producto/ListarProductos/1")!;
+        if (respuesta != null && respuesta.Exito)
+        {
+            return respuesta.Resultado!;
+        }
+        else
+        {
+            Console.WriteLine("No se recibieron productos o la respuesta fue negativa.");
+            return new List<ProductoDto>();
+        }
+    }
+
+    private async Task<List<CategoriaOut>> ObtenerCategorias()
+    {
+        var respuesta = await api.GetApiAuth<List<CategoriaOut>>("/api/Categoria/Listar/Categorias")!;
+        if (respuesta != null && respuesta.Exito)
+        {
+            return respuesta.Resultado!;
+        }
+        else
+        {
+            Console.WriteLine("No se recibieron categorías o la respuesta fue negativa.");
+            return new List<CategoriaOut>();
+        }
+    }
+
+    private void VerDetallesProducto(ProductoDto producto)
+    {
+        productoSeleccionado = producto;
+        mostrarDetalles = true;
+        StateHasChanged();
+    }
+
+    private void CerrarDetalles()
+    {
+        productoSeleccionado = null;
+        mostrarDetalles = false;
+        StateHasChanged();
+    }
+
+    protected override async void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            api.Modal = _modal!;
+            api.Loading = _loading!;
+        }
+    }
+}
